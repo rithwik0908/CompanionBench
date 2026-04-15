@@ -30,6 +30,34 @@ export async function POST(
     );
   }
 
+  // ── Pre-execution validation for real adapters ──
+  if (run.adapterType === "character-ai") {
+    // Check that the app is web-accessible
+    if (!run.app.webAccessible) {
+      return NextResponse.json(
+        { error: `App "${run.app.name}" is not marked as web-accessible. Real adapter requires a web-accessible app.` },
+        { status: 400 }
+      );
+    }
+
+    // Check credentials: form-provided OR env vars
+    const hasFormCreds = credentials?.email && credentials?.password;
+    const hasEnvCreds = process.env.CHARACTER_AI_EMAIL && process.env.CHARACTER_AI_PASSWORD;
+    if (!hasFormCreds && !hasEnvCreds) {
+      return NextResponse.json(
+        { error: "Character.AI adapter requires credentials. Provide email/password in the form or set CHARACTER_AI_EMAIL and CHARACTER_AI_PASSWORD env vars." },
+        { status: 400 }
+      );
+    }
+
+    // Check conversation target
+    if (!conversationTarget?.conversationUrl && !conversationTarget?.characterId) {
+      // Allow it — the adapter can work without it if the user navigates manually
+      // But warn in the response
+      console.warn(`[Run:${run.id}] No conversation URL provided for character-ai adapter — the adapter will need a conversation target`);
+    }
+  }
+
   const config = run.config ? JSON.parse(run.config) : {};
 
   const runConfig: RunConfig = {
@@ -53,5 +81,5 @@ export async function POST(
     console.error(`Run ${run.id} failed:`, err);
   });
 
-  return NextResponse.json({ status: "started", runId: run.id });
+  return NextResponse.json({ status: "started", runId: run.id, adapterType: run.adapterType });
 }

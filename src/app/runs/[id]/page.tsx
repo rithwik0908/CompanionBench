@@ -23,6 +23,7 @@ import {
   XCircle,
   Loader2,
   AlertTriangle,
+  Terminal,
 } from "lucide-react";
 
 interface Turn {
@@ -46,6 +47,14 @@ interface Artifact {
   mimeType: string | null;
 }
 
+interface LogEntry {
+  timestamp: string;
+  level: string;
+  stage: string;
+  message: string;
+  meta?: Record<string, unknown>;
+}
+
 interface RunData {
   id: string;
   name: string;
@@ -67,6 +76,7 @@ export default function RunDetailPage() {
   const params = useParams();
   const [run, setRun] = useState<RunData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
 
   const fetchRun = () => {
     fetch(`/api/runs/${params.id}`)
@@ -77,12 +87,21 @@ export default function RunDetailPage() {
       });
   };
 
+  const fetchLogs = () => {
+    fetch(`/api/runs/${params.id}/logs`)
+      .then((r) => r.json())
+      .then((data) => setLogs(data.entries || []))
+      .catch(() => {});
+  };
+
   useEffect(() => {
     fetchRun();
+    fetchLogs();
     // Poll if running
     const interval = setInterval(() => {
       if (run?.status === "running" || run?.status === "pending") {
         fetchRun();
+        fetchLogs();
       }
     }, 2000);
     return () => clearInterval(interval);
@@ -250,6 +269,10 @@ export default function RunDetailPage() {
           <TabsTrigger value="config">
             <Clock className="mr-2 h-4 w-4" />
             Config & Timing
+          </TabsTrigger>
+          <TabsTrigger value="logs">
+            <Terminal className="mr-2 h-4 w-4" />
+            Logs ({logs.length})
           </TabsTrigger>
         </TabsList>
 
@@ -428,6 +451,42 @@ export default function RunDetailPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* Logs */}
+        <TabsContent value="logs" className="mt-4">
+          {logs.length === 0 ? (
+            <Card className="py-12 text-center">
+              <p className="text-sm text-slate-400">No logs available.</p>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="max-h-[600px] overflow-y-auto rounded-lg bg-slate-900 p-4 font-mono text-xs">
+                  {logs.map((entry, i) => (
+                    <div key={i} className={`py-0.5 ${
+                      entry.level === "error" ? "text-red-400" :
+                      entry.level === "warn" ? "text-yellow-400" :
+                      entry.level === "debug" ? "text-slate-500" :
+                      "text-slate-300"
+                    }`}>
+                      <span className="text-slate-600">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+                      {" "}
+                      <span className={`font-semibold ${
+                        entry.level === "error" ? "text-red-500" :
+                        entry.level === "warn" ? "text-yellow-500" :
+                        "text-violet-400"
+                      }`}>[{entry.stage}]</span>
+                      {" "}{entry.message}
+                      {entry.meta && Object.keys(entry.meta).length > 0 && (
+                        <span className="text-slate-600"> {JSON.stringify(entry.meta)}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>

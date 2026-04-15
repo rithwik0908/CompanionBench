@@ -116,6 +116,22 @@ function NewRunPageInner() {
       return;
     }
 
+    // Validate for real adapters
+    if (adapterType === "character-ai") {
+      if (!selectedApp?.webAccessible) {
+        toast.error("Selected app is not web-accessible. Real adapter requires a web-accessible app.");
+        return;
+      }
+      if (!email && !password) {
+        toast.error("Character.AI adapter requires email and password credentials (or set CHARACTER_AI_EMAIL / CHARACTER_AI_PASSWORD env vars).");
+        return;
+      }
+      if (!conversationUrl) {
+        toast.error("Provide a conversation URL for real adapter (e.g., https://character.ai/chat/...)");
+        return;
+      }
+    }
+
     setCreating(true);
     try {
       // Create the run
@@ -162,10 +178,12 @@ function NewRunPageInner() {
       });
 
       if (execRes.ok) {
-        toast.success("Run started");
+        const execData = await execRes.json();
+        toast.success(`Run started with ${execData.adapterType} adapter`);
         router.push(`/runs/${run.id}`);
       } else {
-        toast.error("Run created but execution failed to start");
+        const execErr = await execRes.json();
+        toast.error(execErr.error || "Run created but execution failed to start");
         router.push(`/runs/${run.id}`);
       }
     } catch {

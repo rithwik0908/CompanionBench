@@ -7,19 +7,29 @@ import type {
 } from "./types";
 import { MockAdapter } from "./adapters/mock";
 import { CharacterAIAdapter } from "./adapters/character-ai";
+import { RunLogger, registerLogger, removeLogger } from "./logger";
 import * as fs from "fs/promises";
 import * as path from "path";
 
 type ProgressCallback = (progress: RunProgress) => void;
 
-function getAdapter(adapterType: string): PlatformAdapter {
+/**
+ * Instantiate the correct adapter based on adapterType.
+ * No fallback — if an unknown type is passed, it throws.
+ */
+function getAdapter(adapterType: string, logger: RunLogger): PlatformAdapter {
+  logger.info("adapter", `Instantiating adapter: ${adapterType}`);
+
   switch (adapterType) {
     case "mock":
       return new MockAdapter();
-    case "character-ai":
-      return new CharacterAIAdapter();
+    case "character-ai": {
+      const adapter = new CharacterAIAdapter();
+      adapter.setLogger(logger);
+      return adapter;
+    }
     default:
-      throw new Error(`Unknown adapter type: ${adapterType}`);
+      throw new Error(`Unknown adapter type: "${adapterType}". Valid types: mock, character-ai`);
   }
 }
 
@@ -27,7 +37,19 @@ export async function executeRun(
   config: RunConfig,
   onProgress?: ProgressCallback
 ): Promise<void> {
-  const adapter = getAdapter(config.adapterType);
+  const logger = new RunLogger(config.runId, config.adapterType);
+  registerLogger(logger);
+
+  logger.info("run", "Starting execution", {
+    runId: config.runId,
+    appId: config.appId,
+    adapterType: config.adapterType,
+    messageCount: config.messages.length,
+    hasCredentials: !!config.credentials,
+    hasConversationTarget: !!config.conversationTarget,
+  });
+
+  const adapter = getAdapter(config.adapterType, logger);
   const artifactsDir = path.join(
     process.cwd(),
     "public",
@@ -56,19 +78,26 @@ export async function executeRun(
     });
 
     // Initialize adapter
+    logger.info("run", "Initializing adapter");
     await adapter.initialize(adapterConfig);
+    logger.info("run", "Adapter initialized");
 
-    // Login if credentials provided
-    if (config.credentials) {
-      const loginResult = await adapter.login(config.credentials);
+    // Login if credentials provided (or env vars for real adapters)
+    if (config.credentials || config.adapterType !== "mock") {
+      const creds = config.credentials || { method: "email" };
+      logger.info("run", "Starting login");
+      const loginResult = await adapter.login(creds);
       if (!loginResult.success) {
         throw new Error(`Login failed: ${loginResult.error}`);
       }
+      logger.info("run", "Login successful");
+      // Store only redacted login metadata — never raw passwords
       await prisma.run.update({
         where: { id: config.runId },
         data: {
           loginMeta: JSON.stringify({
-            method: config.credentials.method,
+            method: creds.method,
+            email: creds.email ? creds.email.replace(/(.{3}).*(@.*)/, "$1***$2") : undefined,
             ...loginResult.sessionInfo,
           }),
         },
@@ -77,7 +106,12 @@ export async function executeRun(
 
     // Open conversation
     if (config.conversationTarget) {
+      logger.info("run", "Opening conversation", {
+        url: config.conversationTarget.conversationUrl,
+        characterId: config.conversationTarget.characterId,
+      });
       await adapter.openConversation(config.conversationTarget);
+      logger.info("run", "Conversation opened");
     }
 
     // Create all turns upfront
@@ -104,6 +138,10 @@ export async function executeRun(
       const sentAt = new Date();
 
       try {
+        logger.info("turn", `Turn ${i + 1}/${turns.length}: Sending`, {
+          messagePreview: config.messages[i].slice(0, 80),
+        });
+
         // Update turn status
         await prisma.messageTurn.update({
           where: { id: turn.id },
@@ -119,6 +157,10 @@ export async function executeRun(
         );
         const receivedAt = new Date();
         const durationMs = receivedAt.getTime() - sentAt.getTime();
+
+        logger.info("turn", `Turn ${i + 1}: Response received (${durationMs}ms)`, {
+          responsePreview: response.slice(0, 100),
+        });
 
         // Capture screenshot if enabled
         let screenshotPath: string | undefined;
@@ -147,8 +189,10 @@ export async function executeRun(
                 sizeBytes: screenshotBuffer.length,
               },
             });
-          } catch {
-            // Screenshot failure is non-fatal
+            logger.info("turn", `Turn ${i + 1}: Screenshot saved`, { filename });
+          } catch (screenshotErr) {
+            const screenshotMsg = screenshotErr instanceof Error ? screenshotErr.message : String(screenshotErr);
+            logger.warn("turn", `Turn ${i + 1}: Screenshot failed (non-fatal): ${screenshotMsg}`);
           }
         }
 
@@ -195,6 +239,8 @@ export async function executeRun(
         const errorMsg = err instanceof Error ? err.message : String(err);
         failCount++;
 
+        logger.error("turn", `Turn ${i + 1}: Failed — ${errorMsg}`);
+
         await prisma.messageTurn.update({
           where: { id: turn.id },
           data: {
@@ -217,11 +263,26 @@ export async function executeRun(
             sentAt,
           },
         });
+
+        // For real adapters, abort on first failure — don't continue with broken state
+        if (config.adapterType !== "mock") {
+          logger.error("run", "Aborting remaining turns after failure (real adapter)");
+          // Mark remaining turns as skipped
+          for (let j = i + 1; j < turns.length; j++) {
+            await prisma.messageTurn.update({
+              where: { id: turns[j].id },
+              data: { status: "error", errorMessage: "Skipped: previous turn failed" },
+            });
+            failCount++;
+          }
+          break;
+        }
       }
     }
 
     // Finalize run
     const summary = {
+      adapterType: config.adapterType,
       totalTurns: turns.length,
       successCount,
       failCount,
@@ -229,14 +290,24 @@ export async function executeRun(
         successCount > 0 ? Math.round(totalResponseTime / successCount) : 0,
     };
 
+    const finalStatus = failCount === turns.length ? "failed" : "completed";
+    logger.info("run", `Run ${finalStatus}`, summary);
+
     await prisma.run.update({
       where: { id: config.runId },
       data: {
-        status: failCount === turns.length ? "failed" : "completed",
+        status: finalStatus,
         completedAt: new Date(),
         summary: JSON.stringify(summary),
       },
     });
+
+    // Persist logs to a file in artifacts
+    await fs.writeFile(
+      path.join(artifactsDir, "run-log.json"),
+      logger.serialize(),
+      "utf-8"
+    );
 
     onProgress?.({
       runId: config.runId,
@@ -246,6 +317,8 @@ export async function executeRun(
     });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.error("run", `Run failed with exception: ${errorMsg}`);
+
     await prisma.run.update({
       where: { id: config.runId },
       data: {
@@ -254,6 +327,17 @@ export async function executeRun(
         completedAt: new Date(),
       },
     });
+
+    // Persist logs even on failure
+    try {
+      await fs.writeFile(
+        path.join(artifactsDir, "run-log.json"),
+        logger.serialize(),
+        "utf-8"
+      );
+    } catch {
+      // Log persistence failure is non-fatal
+    }
 
     onProgress?.({
       runId: config.runId,
@@ -264,5 +348,6 @@ export async function executeRun(
     });
   } finally {
     await adapter.cleanup();
+    removeLogger(config.runId);
   }
 }
