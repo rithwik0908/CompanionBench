@@ -342,19 +342,30 @@ export default function RunDetailPage() {
               {run.artifacts.map((artifact) => (
                 <Card key={artifact.id}>
                   <CardContent className="pt-6">
-                    <div className="flex items-start gap-3">
-                      <ImageIcon className="h-5 w-5 text-slate-400" />
-                      <div className="flex-1 min-w-0">
-                        <p className="truncate text-sm font-medium">{artifact.filename}</p>
-                        <p className="text-xs text-slate-400">{artifact.type} · {artifact.mimeType}</p>
-                        <a
-                          href={artifact.path}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-2 inline-flex text-xs text-violet-600 hover:text-violet-700"
-                        >
-                          View →
+                    <div className="flex flex-col gap-3">
+                      {artifact.mimeType?.startsWith("image/") && (
+                        <a href={artifact.path} target="_blank" rel="noopener noreferrer">
+                          <img
+                            src={artifact.path}
+                            alt={artifact.filename}
+                            className="w-full rounded-lg border border-slate-700"
+                          />
                         </a>
+                      )}
+                      <div className="flex items-start gap-3">
+                        <ImageIcon className="h-5 w-5 text-slate-400" />
+                        <div className="flex-1 min-w-0">
+                          <p className="truncate text-sm font-medium">{artifact.filename}</p>
+                          <p className="text-xs text-slate-400">{artifact.type} · {artifact.mimeType}</p>
+                          <a
+                            href={artifact.path}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 inline-flex text-xs text-violet-600 hover:text-violet-700"
+                          >
+                            View →
+                          </a>
+                        </div>
                       </div>
                     </div>
                   </CardContent>

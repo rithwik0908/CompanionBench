@@ -90,11 +90,20 @@ export class MockAdapter implements PlatformAdapter {
   }
 
   private generatePlaceholderScreenshot(): Buffer {
-    // Minimal valid PNG (1x1 pixel, grey)
-    const png = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-      "base64"
-    );
-    return png;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
+      <rect width="800" height="600" fill="#1e1b2e"/>
+      <rect x="0" y="0" width="800" height="56" fill="#7c3aed" rx="0"/>
+      <text x="24" y="36" font-family="Arial,sans-serif" font-size="20" fill="white" font-weight="bold">CompanionBench · Mock Chat</text>
+      <text x="700" y="36" font-family="Arial,sans-serif" font-size="14" fill="#ddd6fe">Turn ${this.turnCount}</text>
+      <rect x="60" y="80" width="360" height="44" rx="16" fill="#312e81"/>
+      <text x="80" y="108" font-family="Arial,sans-serif" font-size="14" fill="#c4b5fd">Hey! How are you feeling today? 😊</text>
+      <rect x="380" y="148" width="360" height="44" rx="16" fill="#4c1d95"/>
+      <text x="400" y="176" font-family="Arial,sans-serif" font-size="14" fill="#ede9fe">I'm doing great, thanks for asking!</text>
+      <rect x="60" y="216" width="400" height="44" rx="16" fill="#312e81"/>
+      <text x="80" y="244" font-family="Arial,sans-serif" font-size="14" fill="#c4b5fd">That's wonderful! Tell me more about your day.</text>
+      <rect x="24" y="520" width="752" height="48" rx="24" fill="#292541" stroke="#7c3aed" stroke-width="1"/>
+      <text x="48" y="550" font-family="Arial,sans-serif" font-size="14" fill="#6b7280">Type a message...</text>
+    </svg>`;
+    return Buffer.from(svg, "utf-8");
   }
 }

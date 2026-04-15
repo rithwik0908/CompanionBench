@@ -127,7 +127,11 @@ export async function executeRun(
             const screenshotBuffer = await adapter.captureScreenshot(
               `turn-${i}`
             );
-            const filename = `turn-${i}-screenshot.png`;
+            // Detect format from buffer content
+            const isSvg = screenshotBuffer.slice(0, 100).toString("utf-8").trimStart().startsWith("<svg");
+            const ext = isSvg ? "svg" : "png";
+            const mimeType = isSvg ? "image/svg+xml" : "image/png";
+            const filename = `turn-${i}-screenshot.${ext}`;
             const filepath = path.join(artifactsDir, filename);
             await fs.writeFile(filepath, screenshotBuffer);
             screenshotPath = `/artifacts/${config.runId}/${filename}`;
@@ -139,7 +143,7 @@ export async function executeRun(
                 type: "screenshot",
                 filename,
                 path: screenshotPath,
-                mimeType: "image/png",
+                mimeType,
                 sizeBytes: screenshotBuffer.length,
               },
             });
