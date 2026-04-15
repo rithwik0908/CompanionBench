@@ -1,36 +1,137 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CompanionBench
+
+A research-grade web application for evaluating AI companion apps and automating proof-of-concept interactions. Built for the RouterSense research project.
+
+## Overview
+
+CompanionBench has two modules:
+
+1. **Evaluation Registry** — Catalog and evaluate AI companion apps using structured fields (web accessibility, login requirements, age verification, subscription models, language support). Import/export via CSV.
+
+2. **Automation Runner** — Execute multi-message conversation batches against target platforms using browser automation (Playwright). Captures responses, screenshots, timing data, and page HTML as evidence artifacts.
+
+## Tech Stack
+
+- **Next.js 14** (App Router) + TypeScript
+- **Prisma 5** + SQLite
+- **Tailwind CSS** + shadcn/ui components
+- **Playwright** for browser automation
+- **Server-Sent Events** for live run monitoring
+- **PapaParse** for CSV import/export
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 20+
+- npm
+
+### Setup
 
 ```bash
+# Install dependencies
+npm install
+
+# Set up the database
+cp .env.example .env
+npm run db:migrate
+npm run db:seed
+
+# Start the dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Available Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | Description |
+|---|---|
+| `npm run dev` | Start development server |
+| `npm run build` | Production build |
+| `npm run db:migrate` | Run Prisma migrations |
+| `npm run db:seed` | Seed database with 15 sample apps |
+| `npm run db:reset` | Reset database and re-seed |
+| `npm run db:studio` | Open Prisma Studio GUI |
 
-## Learn More
+## Architecture
 
-To learn more about Next.js, take a look at the following resources:
+```
+src/
+├── app/                      # Next.js App Router pages & API routes
+│   ├── api/
+│   │   ├── apps/             # CRUD, CSV import/export
+│   │   └── runs/             # Run management, execution, SSE streaming
+│   ├── apps/                 # App registry pages
+│   │   ├── [id]/             # App detail + evaluation form
+│   │   └── import/           # CSV import
+│   ├── runs/                 # Automation run pages
+│   │   ├── [id]/             # Run detail + transcript
+│   │   │   └── console/      # Live SSE console
+│   │   └── new/              # Run builder
+│   └── page.tsx              # Dashboard
+├── automation/
+│   ├── types.ts              # PlatformAdapter interface
+│   ├── runner.ts             # Run orchestrator
+│   └── adapters/
+│       ├── mock.ts           # Mock adapter (testing)
+│       └── character-ai.ts   # Character.AI adapter (Playwright)
+├── components/
+│   ├── layout/sidebar.tsx    # Navigation sidebar
+│   └── ui/                   # shadcn/ui components
+├── lib/
+│   ├── db.ts                 # Prisma client singleton
+│   ├── csv.ts                # CSV parse/import/export
+│   └── utils.ts              # Utilities
+└── prisma/
+    ├── schema.prisma         # Database schema
+    └── seed.ts               # Seed script
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Database Models
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **App** — AI companion app with all Q1 evaluation fields
+- **Run** — Automation run (status, config, adapter type, timing, summary)
+- **MessageTurn** — Individual message/response pair within a run
+- **Artifact** — Screenshot, log, or export file attached to a run or turn
 
-## Deploy on Vercel
+## Adapter Pattern
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The automation engine uses an adapter interface (`PlatformAdapter`) with methods:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `initialize()`, `login()`, `openConversation()`
+- `sendMessage()`, `waitForResponse()`, `extractResponse()`
+- `captureScreenshot()`, `capturePageHtml()`, `cleanup()`
+
+**Included adapters:**
+- **MockAdapter** — Simulated responses with realistic delays for testing
+- **CharacterAIAdapter** — Real Playwright-based automation for character.ai
+
+To add a new platform, implement the `PlatformAdapter` interface in `src/automation/adapters/`.
+
+## Q1 Evaluation Fields
+
+Each app entry captures:
+
+| Field | Type |
+|---|---|
+| Name, Platform, Developer, Store URL | Text |
+| App Type | companion / general_purpose / other |
+| Web Accessible + URL | Boolean + URL |
+| Login Required + Methods | Boolean + comma-separated |
+| Age Verification Required + Method | Boolean + Text |
+| Subscription Required for Long Chat | Boolean |
+| All Features Available Without Subscription | Boolean |
+| Subscription Features + Cost | Text |
+| Languages Supported | Comma-separated |
+
+## Demo Walkthrough
+
+1. **Dashboard** — View stats (total apps, evaluated count, automation runs)
+2. **App Registry** → Browse/filter/search the 15 seeded apps
+3. **App Detail** → Edit evaluation fields, view linked runs
+4. **Import CSV** → Upload a CSV to bulk-import apps
+5. **Export CSV** → Download the full registry as CSV
+6. **New Run** → Configure a 10-message mock run, launch it
+7. **Run Detail** → View the transcript, artifacts, timing data
+8. **Live Console** → Watch messages stream in via SSE

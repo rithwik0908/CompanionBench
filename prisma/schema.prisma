@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model App {
+  id        String   @id @default(cuid())
+  name      String
+  platform  String?
+  developer String?
+  storeUrl  String?
+  iconUrl   String?
+
+  appType                                String?
+  webAccessible                          Boolean?
+  webUrl                                 String?
+  loginRequired                          Boolean?
+  loginMethods                           String?
+  ageVerificationRequired                Boolean?
+  ageVerificationMethod                  String?
+  subscriptionRequiredForLongChat        Boolean?
+  allFeaturesAvailableWithoutSubscription Boolean?
+  subscriptionFeatures                   String?
+  subscriptionCost                       String?
+  languagesSupported                     String?
+
+  notes         String?
+  evidenceLinks String?
+  evaluatedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  runs Run[]
+}
+
+model Run {
+  id          String @id @default(cuid())
+  name        String
+  appId       String
+  app         App    @relation(fields: [appId], references: [id], onDelete: Cascade)
+  adapterType String
+
+  status       String @default("pending")
+  config       String?
+  loginMeta    String?
+  summary      String?
+  errorMessage String?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  turns     MessageTurn[]
+  artifacts Artifact[]
+}
+
+model MessageTurn {
+  id        String @id @default(cuid())
+  runId     String
+  run       Run    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  turnIndex Int
+
+  inputMessage String
+  response     String?
+  status       String  @default("pending")
+  errorMessage String?
+
+  sentAt     DateTime?
+  receivedAt DateTime?
+  durationMs Int?
+
+  createdAt DateTime   @default(now())
+  artifacts Artifact[]
+}
+
+model Artifact {
+  id     String       @id @default(cuid())
+  runId  String?
+  run    Run?         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  turnId String?
+  turn   MessageTurn? @relation(fields: [turnId], references: [id], onDelete: Cascade)
+
+  type      String
+  filename  String
+  path      String
+  mimeType  String?
+  sizeBytes Int?
+
+  createdAt DateTime @default(now())
+}
