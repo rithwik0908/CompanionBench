@@ -306,6 +306,8 @@ export class CharacterAIAdapter implements PlatformAdapter {
     // Strategy 2: Poll until we detect new text content on the page
     const beforeSet = new Set(this.textBlocksBefore);
     const startTime = Date.now();
+    let lastNewBlockCount = 0;
+    let stableCount = 0;
 
     while (Date.now() - startTime < timeout) {
       await this.page.waitForTimeout(1000);
@@ -315,12 +317,34 @@ export class CharacterAIAdapter implements PlatformAdapter {
       const newBlocks = currentBlocks.filter((b) => !beforeSet.has(b));
 
       if (newBlocks.length > 0) {
-        // The last new block that ISN'T our sent message is the response
-        // (our sent message also appears, so exclude short fragments matching user input)
-        const response = newBlocks[newBlocks.length - 1];
-        this.logger?.info("waitForResponse", `New content detected (${newBlocks.length} new blocks, latest: ${response.length} chars)`);
-        return response;
+        // Wait for the response to stabilize (same block count for 2 consecutive polls)
+        if (newBlocks.length === lastNewBlockCount) {
+          stableCount++;
+        } else {
+          stableCount = 0;
+        }
+        lastNewBlockCount = newBlocks.length;
+
+        if (stableCount >= 2) {
+          // Filter out blocks that look like our sent user message (exact match)
+          const sentMessages = new Set(this.textBlocksBefore);
+          const responseBlocks = newBlocks.filter((b) => !sentMessages.has(b));
+
+          // Join ALL new blocks to capture the full multi-paragraph response
+          const fullResponse = responseBlocks.join("\n\n").trim();
+          this.logger?.info("waitForResponse", `Response stabilized (${responseBlocks.length} blocks, ${fullResponse.length} chars)`);
+          return fullResponse || newBlocks.join("\n\n").trim();
+        }
       }
+    }
+
+    // If we got some new blocks but never stabilized, return what we have
+    const currentBlocks = await this.getTextBlocks();
+    const finalNew = currentBlocks.filter((b) => !beforeSet.has(b));
+    if (finalNew.length > 0) {
+      const fullResponse = finalNew.join("\n\n").trim();
+      this.logger?.warn("waitForResponse", `Returning unstabilized response (${finalNew.length} blocks, ${fullResponse.length} chars)`);
+      return fullResponse;
     }
 
     this.logger?.error("waitForResponse", `Timed out after ${timeout}ms`);

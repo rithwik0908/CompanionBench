@@ -43,7 +43,59 @@
 </p>
 
 <!-- ─────────────────────────────────────────── -->
-<h2>1. Chosen Approach</h2>
+<h2>1. Tackling Task 1: Evaluating ~900 Apps at Scale</h2>
+<div class="section-card">
+<p>
+  Task 1 requires systematically evaluating ~900 AI companion apps across structured dimensions (web accessibility, login methods, age verification, subscription models, language support). CompanionBench's Evaluation Registry is designed to support this at scale.
+</p>
+
+<h3>Strategy for ~900 Apps</h3>
+
+<h3>Phase 1: Automated Discovery &amp; Bulk Import</h3>
+<ul>
+  <li><strong>App Store Scraping:</strong> Build scrapers for Google Play, Apple App Store, and web directories (using Playwright or Puppeteer) to extract app metadata — name, developer, store URL, description, category, ratings. This populates the initial ~900 records automatically via CompanionBench's CSV import.</li>
+  <li><strong>Web Accessibility Check (automated):</strong> For each app, run a headless browser to check if a web URL exists and loads. Mark <code>webAccessible = true/false</code> programmatically. This can be parallelized across all 900 apps in under an hour.</li>
+  <li><strong>Login Page Detection (automated):</strong> Navigate to each web-accessible app and check for login forms, OAuth buttons, or paywall gates. Use heuristics (presence of <code>input[type="password"]</code>, Google/Apple sign-in buttons, "Subscribe" CTAs) to auto-tag login requirements.</li>
+</ul>
+
+<h3>Phase 2: Semi-Automated Evaluation</h3>
+<ul>
+  <li><strong>Age Verification Check:</strong> Attempt to access each app with a bot and detect age-gate modals/pages. Log whether the app asks for a birthdate, requires ID, or allows unrestricted access.</li>
+  <li><strong>Subscription Detection:</strong> After login (where possible), send a set of messages and detect whether the app throttles, paywalls, or limits after N messages. Record the threshold and subscription CTA text.</li>
+  <li><strong>Language Detection:</strong> Use the app's UI language, supported locale settings, and any language-switching options to catalog supported languages.</li>
+</ul>
+
+<h3>Phase 3: Human-in-the-Loop Verification</h3>
+<ul>
+  <li><strong>Crowdsourced Review:</strong> For the ~20% of apps where automation is ambiguous (e.g., unusual login flows, captcha-gated), queue them for manual review. CompanionBench's per-app evaluation form supports this — reviewers open the app detail page and fill in the fields.</li>
+  <li><strong>Quality Sampling:</strong> Randomly sample 10% of auto-evaluated apps for human verification to measure automation accuracy.</li>
+</ul>
+
+<h3>Data Model</h3>
+<p>CompanionBench already stores all the required Q1 fields per app:</p>
+<table>
+  <tr><th>Field</th><th>Auto-taggable?</th><th>Method</th></tr>
+  <tr><td>Web Accessible + URL</td><td>Yes</td><td>Headless browser probe</td></tr>
+  <tr><td>Login Required + Methods</td><td>Mostly</td><td>DOM heuristics (OAuth buttons, email forms)</td></tr>
+  <tr><td>Age Verification</td><td>Partially</td><td>Modal/gate detection + manual fallback</td></tr>
+  <tr><td>Subscription Required</td><td>Partially</td><td>Message-limit testing + paywall detection</td></tr>
+  <tr><td>Languages Supported</td><td>Partially</td><td>Locale settings + UI language detection</td></tr>
+</table>
+
+<h3>Throughput Estimate</h3>
+<ul>
+  <li>Phase 1 (automated): ~900 apps in 2-3 hours (parallel headless probes)</li>
+  <li>Phase 2 (semi-automated): ~500 web-accessible apps in 1-2 days (sequential message testing with delays)</li>
+  <li>Phase 3 (manual): ~180 ambiguous apps reviewed by a team in 2-3 days</li>
+</ul>
+
+<div class="highlight">
+  <strong>Key insight:</strong> The adapter pattern in CompanionBench means each of these evaluation checks can be implemented as a lightweight "probe adapter" that inherits the same infrastructure (browser launch, session management, evidence capture, structured logging) already built for the automation runner.
+</div>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2>2. Chosen Approach (Task 2: Automating Conversations)</h2>
 <div class="section-card">
 <p>
   <strong>CompanionBench</strong> is a full-stack web application that automates proof-of-concept interactions with AI companion platforms using <strong>Playwright browser automation</strong>. It sends batches of research-designed messages to real AI companion apps, captures their responses, and collects forensic evidence (screenshots, timing data, page HTML).
@@ -110,6 +162,11 @@
   <li><strong>Single-platform PoC:</strong> The current implementation includes a real adapter for Character.AI only. Other platforms would require implementing their own adapter (but the framework is ready).</li>
   <li><strong>WSL DNS workaround:</strong> Playwright's Chromium in WSL can't resolve DNS through the WSL proxy. We work around this with <code>--host-resolver-rules</code> flags. This is environment-specific and not needed on native Linux/macOS.</li>
 </ul>
+
+<h3>Truncation Bug (fixed)</h3>
+<p>
+  An earlier version of the response extraction logic returned only the <em>last paragraph</em> of Character.AI responses instead of the full message. This caused responses in the database, UI, and exported JSON to appear truncated. The root cause was in <code>waitForResponse()</code>: it returned <code>newBlocks[newBlocks.length - 1]</code> instead of joining all new text blocks. This has been fixed — responses are now captured in full by joining all new DOM text blocks with paragraph breaks, and a stabilization wait ensures streaming responses are fully received before extraction.
+</p>
 </div>
 
 <!-- ─────────────────────────────────────────── -->
