@@ -233,11 +233,13 @@ export class CharacterAIAdapter implements PlatformAdapter {
         document.body;
 
       // Get all paragraph-level elements that contain meaningful text
+      const seen = new Set<string>();
       const blocks: string[] = [];
       const elements = chatArea.querySelectorAll('p, [class*="markdown"], [class*="msg"], [class*="text"], [class*="content"]');
       elements.forEach((el) => {
         const text = (el as HTMLElement).innerText?.trim();
-        if (text && text.length > 5) {
+        if (text && text.length > 5 && !seen.has(text)) {
+          seen.add(text);
           blocks.push(text);
         }
       });
