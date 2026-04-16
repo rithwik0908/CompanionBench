@@ -234,17 +234,22 @@ export class CharacterAIAdapter implements PlatformAdapter {
 
       // Get all paragraph-level elements that contain meaningful text
       const seen = new Set<string>();
-      const blocks: string[] = [];
+      const rawBlocks: string[] = [];
       const elements = chatArea.querySelectorAll('p, [class*="markdown"], [class*="msg"], [class*="text"], [class*="content"]');
       elements.forEach((el) => {
         const text = (el as HTMLElement).innerText?.trim();
         if (text && text.length > 5 && !seen.has(text)) {
           seen.add(text);
-          blocks.push(text);
+          rawBlocks.push(text);
         }
       });
 
-      // Fallback: if no <p> elements found, split the whole area by newlines
+      // Filter out blocks that are substrings of a larger block (parent-child nesting)
+      const blocks = rawBlocks.filter((block) => {
+        return !rawBlocks.some((other) => other !== block && other.length > block.length && other.includes(block));
+      });
+
+      // Fallback: if no elements found, split the whole area by newlines
       if (blocks.length === 0) {
         const allText = (chatArea as HTMLElement).innerText || "";
         allText.split("\n").forEach((line) => {
