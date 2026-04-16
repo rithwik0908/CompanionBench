@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { executeRun } from "@/automation/runner";
+import { hasStorageState } from "@/automation/adapters/character-ai";
 import { NextRequest, NextResponse } from "next/server";
 import type { RunConfig } from "@/automation/types";
 
@@ -21,7 +22,7 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { messages, credentials, conversationTarget } = body;
+  const { messages, conversationTarget } = body;
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json(
@@ -40,20 +41,20 @@ export async function POST(
       );
     }
 
-    // Check credentials: form-provided OR env vars
-    const hasFormCreds = credentials?.email && credentials?.password;
-    const hasEnvCreds = process.env.CHARACTER_AI_EMAIL && process.env.CHARACTER_AI_PASSWORD;
-    if (!hasFormCreds && !hasEnvCreds) {
+    // Check for saved authenticated session (storage state)
+    const hasSession = await hasStorageState();
+    if (!hasSession) {
       return NextResponse.json(
-        { error: "Character.AI adapter requires credentials. Provide email/password in the form or set CHARACTER_AI_EMAIL and CHARACTER_AI_PASSWORD env vars." },
+        {
+          error:
+            'No authenticated Character.AI session found. Run "npm run auth:character-ai" in your terminal first to log in and save your session.',
+        },
         { status: 400 }
       );
     }
 
     // Check conversation target
     if (!conversationTarget?.conversationUrl && !conversationTarget?.characterId) {
-      // Allow it — the adapter can work without it if the user navigates manually
-      // But warn in the response
       console.warn(`[Run:${run.id}] No conversation URL provided for character-ai adapter — the adapter will need a conversation target`);
     }
   }
@@ -65,7 +66,7 @@ export async function POST(
     appId: run.appId,
     adapterType: run.adapterType,
     messages,
-    credentials: credentials || undefined,
+    credentials: { method: "storage-state" },
     conversationTarget: conversationTarget || undefined,
     adapterConfig: {
       headless: config.headless ?? true,

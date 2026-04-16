@@ -53,6 +53,34 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run db:seed` | Seed database with 15 sample apps |
 | `npm run db:reset` | Reset database and re-seed |
 | `npm run db:studio` | Open Prisma Studio GUI |
+| `npm run auth:character-ai` | Initialize Character.AI browser session |
+
+## Character.AI Authentication
+
+Character.AI no longer supports standard email + password login. It uses email-link or OAuth (Google / Apple). CompanionBench handles this via **Playwright storage-state reuse**:
+
+### One-Time Setup
+
+```bash
+npm run auth:character-ai
+```
+
+This opens a visible Chromium browser at character.ai. Log in manually using whichever method you prefer (Google, Apple, email link). Once logged in, the script automatically detects it and saves the session to `.auth/character-ai.json`.
+
+### How It Works
+
+1. **`npm run auth:character-ai`** — Opens a real browser. You log in manually. Session cookies/state are saved to `.auth/character-ai.json`.
+2. **New Run (Real adapter)** — The UI checks for a valid session before launch. If missing, it shows instructions.
+3. **At run start** — The adapter loads the storage state into a fresh Playwright context, navigates to character.ai, and verifies the session is still active before sending messages.
+4. **Session expired?** — Re-run `npm run auth:character-ai` to refresh.
+
+### Verify Session
+
+The UI shows session status on the New Run page when "Character.AI (Real)" is selected. You can also check via API:
+
+```bash
+curl http://localhost:3000/api/auth/character-ai/status
+```
 
 ## Architecture
 
@@ -105,7 +133,7 @@ The automation engine uses an adapter interface (`PlatformAdapter`) with methods
 
 **Included adapters:**
 - **MockAdapter** — Simulated responses with realistic delays for testing
-- **CharacterAIAdapter** — Real Playwright-based automation for character.ai
+- **CharacterAIAdapter** — Real Playwright-based automation for character.ai (session-based auth via storage state)
 
 To add a new platform, implement the `PlatformAdapter` interface in `src/automation/adapters/`.
 

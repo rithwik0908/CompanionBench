@@ -44,3 +44,6 @@ next-env.d.ts
 
 # artifacts
 /public/artifacts
+
+# auth storage state (contains session cookies)
+/.auth

@@ -11,6 +11,7 @@
     "db:seed": "npx prisma db seed",
     "db:reset": "npx prisma migrate reset --force",
     "db:studio": "npx prisma studio",
+    "auth:character-ai": "npx ts-node --project scripts/tsconfig.json scripts/auth-character-ai.ts",
     "postinstall": "npx prisma generate"
   },
   "prisma": {

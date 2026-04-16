@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { ArrowLeft, Play, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Play, Plus, Trash2, CheckCircle, XCircle, RefreshCw } from "lucide-react";
 
 interface App {
   id: string;
@@ -74,9 +74,30 @@ function NewRunPageInner() {
   const [responseTimeoutMs, setResponseTimeoutMs] = useState(30000);
 
   // Credentials (only shown for real adapters)
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [conversationUrl, setConversationUrl] = useState("");
+  const [sessionStatus, setSessionStatus] = useState<{
+    authenticated: boolean;
+    lastModified?: string;
+    message?: string;
+    loading: boolean;
+  }>({ authenticated: false, loading: true });
+
+  const checkSessionStatus = () => {
+    setSessionStatus((prev) => ({ ...prev, loading: true }));
+    fetch("/api/auth/character-ai/status")
+      .then((r) => r.json())
+      .then((data) =>
+        setSessionStatus({
+          authenticated: data.authenticated,
+          lastModified: data.lastModified,
+          message: data.message,
+          loading: false,
+        })
+      )
+      .catch(() =>
+        setSessionStatus({ authenticated: false, message: "Failed to check session", loading: false })
+      );
+  };
 
   useEffect(() => {
     fetch("/api/apps?webAccessible=true")
@@ -90,6 +111,13 @@ function NewRunPageInner() {
         }
       });
   }, [preselectedAppId]);
+
+  // Check Character.AI session when adapter is selected
+  useEffect(() => {
+    if (adapterType === "character-ai") {
+      checkSessionStatus();
+    }
+  }, [adapterType]);
 
   const selectedApp = apps.find((a) => a.id === appId);
 
@@ -122,8 +150,8 @@ function NewRunPageInner() {
         toast.error("Selected app is not web-accessible. Real adapter requires a web-accessible app.");
         return;
       }
-      if (!email && !password) {
-        toast.error("Character.AI adapter requires email and password credentials (or set CHARACTER_AI_EMAIL / CHARACTER_AI_PASSWORD env vars).");
+      if (!sessionStatus.authenticated) {
+        toast.error('No authenticated session. Run "npm run auth:character-ai" in your terminal first.');
         return;
       }
       if (!conversationUrl) {
@@ -166,10 +194,6 @@ function NewRunPageInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: validMessages,
-          credentials:
-            adapterType !== "mock" && email
-              ? { method: "email", email, password }
-              : undefined,
           conversationTarget:
             adapterType !== "mock" && conversationUrl
               ? { conversationUrl }
@@ -288,28 +312,59 @@ function NewRunPageInner() {
             </CardContent>
           </Card>
 
-          {/* Credentials (only for real adapters) */}
+          {/* Session & Conversation (only for real adapters) */}
           {adapterType !== "mock" && (
             <Card>
               <CardHeader>
-                <CardTitle>Platform Credentials</CardTitle>
+                <CardTitle>Platform Session</CardTitle>
                 <CardDescription>
-                  Required for real platform automation. Credentials are used in-memory only and never stored.
+                  Character.AI uses email-link / OAuth login. You must initialize a session once via the terminal,
+                  then all runs reuse it automatically.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Email</Label>
-                    <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" />
+                {/* Session Status */}
+                <div className="rounded-lg border p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {sessionStatus.loading ? (
+                        <RefreshCw className="h-4 w-4 animate-spin text-slate-400" />
+                      ) : sessionStatus.authenticated ? (
+                        <CheckCircle className="h-4 w-4 text-emerald-500" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-red-500" />
+                      )}
+                      <span className="text-sm font-medium">
+                        {sessionStatus.loading
+                          ? "Checking session..."
+                          : sessionStatus.authenticated
+                          ? "Session active"
+                          : "No session"}
+                      </span>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={checkSessionStatus} disabled={sessionStatus.loading}>
+                      <RefreshCw className={`h-3 w-3 ${sessionStatus.loading ? "animate-spin" : ""}`} />
+                    </Button>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Password</Label>
-                    <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-                  </div>
+                  {sessionStatus.authenticated && sessionStatus.lastModified && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      Saved: {new Date(sessionStatus.lastModified).toLocaleString()}
+                    </p>
+                  )}
+                  {!sessionStatus.authenticated && !sessionStatus.loading && (
+                    <div className="mt-2 rounded bg-amber-50 p-2">
+                      <p className="text-xs text-amber-800">
+                        Run <code className="rounded bg-amber-100 px-1">npm run auth:character-ai</code> in your
+                        terminal to open a browser and log in manually. The session will be saved for reuse.
+                      </p>
+                    </div>
+                  )}
                 </div>
+
+                <Separator />
+
                 <div className="space-y-2">
-                  <Label>Conversation URL (optional)</Label>
+                  <Label>Conversation URL</Label>
                   <Input value={conversationUrl} onChange={(e) => setConversationUrl(e.target.value)} placeholder="https://character.ai/chat/..." />
                   <p className="text-xs text-slate-400">Direct URL to a specific character/conversation</p>
                 </div>

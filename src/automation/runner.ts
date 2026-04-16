@@ -82,22 +82,20 @@ export async function executeRun(
     await adapter.initialize(adapterConfig);
     logger.info("run", "Adapter initialized");
 
-    // Login if credentials provided (or env vars for real adapters)
+    // Login / verify session
     if (config.credentials || config.adapterType !== "mock") {
-      const creds = config.credentials || { method: "email" };
-      logger.info("run", "Starting login");
+      const creds = config.credentials || { method: "storage-state" };
+      logger.info("run", "Starting login / session verification", { method: creds.method });
       const loginResult = await adapter.login(creds);
       if (!loginResult.success) {
         throw new Error(`Login failed: ${loginResult.error}`);
       }
-      logger.info("run", "Login successful");
-      // Store only redacted login metadata — never raw passwords
+      logger.info("run", "Session verified");
       await prisma.run.update({
         where: { id: config.runId },
         data: {
           loginMeta: JSON.stringify({
             method: creds.method,
-            email: creds.email ? creds.email.replace(/(.{3}).*(@.*)/, "$1***$2") : undefined,
             ...loginResult.sessionInfo,
           }),
         },
