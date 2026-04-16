@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CompanionBench — Q2 PoC Submission</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; line-height: 1.7; color: #1e293b; background: #f8fafc; padding: 2rem; }
+  .container { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.35rem; font-weight: 600; margin: 2rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 2px solid #e2e8f0; }
+  h3 { font-size: 1.1rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+  p, li { font-size: 0.95rem; }
+  ul, ol { padding-left: 1.5rem; margin-bottom: 0.75rem; }
+  li { margin-bottom: 0.35rem; }
+  code { background: #f1f5f9; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.88rem; font-family: 'Cascadia Code', 'Fira Code', monospace; }
+  pre { background: #1e293b; color: #e2e8f0; padding: 1rem 1.25rem; border-radius: 8px; overflow-x: auto; margin: 0.75rem 0; font-size: 0.85rem; line-height: 1.5; }
+  pre code { background: none; padding: 0; color: inherit; }
+  .meta { color: #64748b; font-size: 0.9rem; margin-bottom: 2rem; }
+  .badge { display: inline-block; background: #7c3aed; color: white; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.78rem; font-weight: 600; margin-right: 0.4rem; }
+  .section-card { background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.5rem; margin-bottom: 1.25rem; }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border: 1px solid #e2e8f0; }
+  th { background: #f8fafc; font-weight: 600; }
+  a { color: #7c3aed; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .highlight { background: #fefce8; border-left: 4px solid #eab308; padding: 0.75rem 1rem; border-radius: 0 6px 6px 0; margin: 0.75rem 0; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>CompanionBench — Q2 PoC Submission</h1>
+<p class="meta">
+  <strong>Sai Rithwik Amajala</strong> · sa9880 · sa9880@nyu.edu<br>
+  <span class="badge">Next.js 14</span>
+  <span class="badge">Playwright</span>
+  <span class="badge">TypeScript</span>
+  <span class="badge">SQLite</span>
+  <br><br>
+  Source: <a href="https://github.com/rithwik0908/CompanionBench">github.com/rithwik0908/CompanionBench</a>
+</p>
+
+<!-- ─────────────────────────────────────────── -->
+<h2>1. Chosen Approach</h2>
+<div class="section-card">
+<p>
+  <strong>CompanionBench</strong> is a full-stack web application that automates proof-of-concept interactions with AI companion platforms using <strong>Playwright browser automation</strong>. It sends batches of research-designed messages to real AI companion apps, captures their responses, and collects forensic evidence (screenshots, timing data, page HTML).
+</p>
+
+<h3>Architecture</h3>
+<ul>
+  <li><strong>Adapter Pattern:</strong> A <code>PlatformAdapter</code> interface defines the contract — <code>initialize()</code>, <code>login()</code>, <code>openConversation()</code>, <code>sendMessage()</code>, <code>waitForResponse()</code>, <code>captureScreenshot()</code>, <code>cleanup()</code>. Each target platform implements this interface.</li>
+  <li><strong>Real Adapter (Character.AI):</strong> Launches a headless Chromium browser via Playwright, loads an authenticated session via storage-state, navigates to a specific character chat, sends messages, and captures actual AI responses using a content-diff strategy.</li>
+  <li><strong>Mock Adapter:</strong> Generates context-aware simulated responses for development and testing without requiring live platform access.</li>
+  <li><strong>Session-Based Auth:</strong> Character.AI no longer supports email+password login (uses OAuth/email-link). We solve this by letting the user log in once via a visible browser, saving Playwright's storage state (cookies + localStorage) to disk, and reusing it for all subsequent headless runs.</li>
+</ul>
+
+<h3>Tech Stack</h3>
+<table>
+  <tr><th>Layer</th><th>Technology</th></tr>
+  <tr><td>Frontend</td><td>Next.js 14 (App Router), React, Tailwind CSS, shadcn/ui</td></tr>
+  <tr><td>Backend</td><td>Next.js API Routes (TypeScript)</td></tr>
+  <tr><td>Database</td><td>SQLite via Prisma 5</td></tr>
+  <tr><td>Automation</td><td>Playwright (Chromium)</td></tr>
+  <tr><td>Auth Strategy</td><td>Playwright storage-state persistence</td></tr>
+  <tr><td>Evidence</td><td>Screenshots (PNG), structured logs (JSON), timing data</td></tr>
+</table>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2>2. Why This Approach Is Effective and Scalable</h2>
+<div class="section-card">
+
+<h3>Effectiveness</h3>
+<ul>
+  <li><strong>Real browser automation captures what users actually see.</strong> Unlike API reverse-engineering or MITM proxies, Playwright interacts with the exact same web interface a human uses — rendering JavaScript, handling dynamic content, and executing the full client-side application.</li>
+  <li><strong>Content-diff response detection is resilient to UI changes.</strong> Instead of relying on fragile CSS class selectors (which break every time a platform updates their UI), we snapshot all visible text before and after sending a message, then diff to find the new AI response. This works regardless of DOM structure changes.</li>
+  <li><strong>Session-state reuse handles modern auth flows.</strong> Many platforms have moved to OAuth/magic-link login. By persisting Playwright's full browser state (cookies, localStorage, sessionStorage), we handle any auth method the user completes — Google, Apple, email link, etc.</li>
+  <li><strong>Evidence collection is automatic.</strong> Every turn captures screenshots, response timing, and can optionally save the page HTML — providing forensic evidence of AI behavior without manual effort.</li>
+</ul>
+
+<h3>Scalability</h3>
+<ul>
+  <li><strong>Adapter pattern enables multi-platform support.</strong> Adding a new platform (e.g., Replika, Chai, Crushon.AI) requires implementing one TypeScript class with the <code>PlatformAdapter</code> interface — no changes to the runner, UI, or data model.</li>
+  <li><strong>Batch execution scales to large studies.</strong> The runner processes messages sequentially with configurable delays, captures evidence per-turn, and logs everything to a structured database. Running 100+ messages against 10+ platforms is a matter of configuration.</li>
+  <li><strong>Storage-state auth pattern is universal.</strong> The same <code>npm run auth:&lt;platform&gt;</code> → save state → reuse in headless runs pattern works for any web-based platform, regardless of their specific login method.</li>
+  <li><strong>SQLite → PostgreSQL migration path is trivial.</strong> Prisma's schema is database-agnostic; switching to PostgreSQL for multi-user/server deployment requires only changing the connection string.</li>
+</ul>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2>3. Assumptions and Limitations</h2>
+<div class="section-card">
+
+<h3>Assumptions</h3>
+<ul>
+  <li>The target platform is <strong>web-accessible</strong> (has a browser-based chat interface).</li>
+  <li>The user can <strong>manually log in once</strong> to establish a session (automated login is not possible for OAuth/email-link flows).</li>
+  <li>The platform renders AI responses as <strong>visible text in the DOM</strong> (not images, audio-only, etc.).</li>
+  <li>The platform does not deploy <strong>aggressive bot detection</strong> that blocks Playwright's Chromium user-agent.</li>
+</ul>
+
+<h3>Limitations</h3>
+<ul>
+  <li><strong>Session expiry:</strong> Storage-state sessions have finite lifetimes. If a platform expires cookies after 24 hours, the user must re-run the auth script. The UI shows session status so this is immediately visible.</li>
+  <li><strong>DOM changes can break input/send selectors:</strong> While response extraction uses a resilient content-diff approach, the message input and send button still rely on selectors (<code>textarea</code>, <code>button[aria-label="Send"]</code>). These may need periodic updates. We centralize all selectors in a single <code>SELECTORS</code> map for easy maintenance.</li>
+  <li><strong>Rate limiting:</strong> Sending messages too fast may trigger platform rate limits. We mitigate this with configurable delays (default: 3 seconds between messages).</li>
+  <li><strong>Single-platform PoC:</strong> The current implementation includes a real adapter for Character.AI only. Other platforms would require implementing their own adapter (but the framework is ready).</li>
+  <li><strong>WSL DNS workaround:</strong> Playwright's Chromium in WSL can't resolve DNS through the WSL proxy. We work around this with <code>--host-resolver-rules</code> flags. This is environment-specific and not needed on native Linux/macOS.</li>
+</ul>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2>4. Extending to Multiple Platforms</h2>
+<div class="section-card">
+<p>The adapter pattern makes multi-platform expansion straightforward:</p>
+
+<h3>To add a new platform (e.g., Replika):</h3>
+<ol>
+  <li>Create <code>src/automation/adapters/replika.ts</code> implementing <code>PlatformAdapter</code></li>
+  <li>Create <code>scripts/auth-replika.ts</code> for session initialization</li>
+  <li>Register the adapter in <code>runner.ts</code>'s <code>getAdapter()</code> switch</li>
+  <li>Add the option to the UI's adapter dropdown</li>
+  <li>Add <code>npm run auth:replika</code> to <code>package.json</code></li>
+</ol>
+
+<p>No changes needed to: database schema, run execution engine, logging system, transcript UI, artifact storage, or export functionality.</p>
+
+<h3>Other expansion vectors:</h3>
+<ul>
+  <li><strong>Mobile apps (iOS/Android):</strong> Replace Playwright with Appium in platform-specific adapters. The runner, logging, and evidence collection layer remain identical.</li>
+  <li><strong>API-based platforms:</strong> For platforms with public or reverse-engineered APIs, adapters can make direct HTTP requests instead of browser automation — much faster and more reliable.</li>
+  <li><strong>MITM proxy approach:</strong> For encrypted API traffic, a mitmproxy-based adapter could intercept and record API calls alongside browser automation for deeper analysis.</li>
+</ul>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2>5. Source Code & Implementation Artifacts</h2>
+<div class="section-card">
+
+<p><strong>GitHub:</strong> <a href="https://github.com/rithwik0908/CompanionBench">https://github.com/rithwik0908/CompanionBench</a></p>
+
+<h3>Key Files</h3>
+<table>
+  <tr><th>File</th><th>Purpose</th></tr>
+  <tr><td><code>src/automation/adapters/character-ai.ts</code></td><td>Real Playwright adapter — storage-state auth, content-diff response extraction</td></tr>
+  <tr><td><code>src/automation/adapters/mock.ts</code></td><td>Mock adapter for development/testing</td></tr>
+  <tr><td><code>src/automation/runner.ts</code></td><td>Run orchestration engine — turn execution, logging, evidence capture</td></tr>
+  <tr><td><code>src/automation/logger.ts</code></td><td>Structured per-run logging (in-memory + disk)</td></tr>
+  <tr><td><code>src/automation/types.ts</code></td><td>PlatformAdapter interface definition</td></tr>
+  <tr><td><code>scripts/auth-character-ai.ts</code></td><td>Interactive session initializer (launches visible browser)</td></tr>
+  <tr><td><code>src/app/api/auth/character-ai/status/route.ts</code></td><td>Session status API endpoint</td></tr>
+  <tr><td><code>src/app/api/runs/[id]/execute/route.ts</code></td><td>Run execution with pre-flight validation</td></tr>
+  <tr><td><code>src/app/runs/new/page.tsx</code></td><td>Run builder UI with session status indicator</td></tr>
+  <tr><td><code>src/app/runs/[id]/page.tsx</code></td><td>Run detail — transcript, artifacts, logs tabs</td></tr>
+</table>
+
+<h3>Running the PoC</h3>
+<pre><code># Clone and install
+git clone https://github.com/rithwik0908/CompanionBench.git
+cd CompanionBench
+npm install
+npx playwright install chromium
+
+# Set up database
+npm run db:migrate
+npm run db:seed
+
+# Initialize Character.AI session (one-time)
+npm run auth:character-ai
+# → Browser opens, log in manually, press Enter to save
+
+# Start the app
+npm run dev
+
+# Open http://localhost:3000
+# → New Run → Character.AI (Real) → paste a chat URL → Launch</code></pre>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h2>6. Demo Video</h2>
+<div class="section-card">
+<p><em>[Attach demo video link here]</em></p>
+<p>The demo shows:</p>
+<ol>
+  <li>Dashboard overview with app registry stats</li>
+  <li>Session status verification (green checkmark on New Run page)</li>
+  <li>Launching a real automation run against Character.AI</li>
+  <li>Live transcript showing actual AI responses with per-turn timing</li>
+  <li>Screenshots captured as forensic artifacts</li>
+  <li>Structured logs tab for debugging</li>
+  <li>JSON export of the full run bundle</li>
+</ol>
+</div>
+
+</div>
+</body>
+</html>
